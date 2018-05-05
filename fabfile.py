@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-from fabric.api import task, run, env, sudo, execute
-from fabric.utils import abort
+from fabric.api import task, run, env, sudo, execute, local
+from fabric.utils import abort, puts, warn
 from fabric.context_managers import cd, settings
 from fabric.contrib.files import append, comment, uncomment
 
@@ -11,40 +11,52 @@ BLOCK_SIZE = 1024
 INODES_LIMIT = 1000000  # An arbitrarily large number. It's irrelevant
 
 env['new_user'] = ''
+env['use_ssh_config'] = True
 
 
 class user_required:
     """Decorator that verifies a user has been set
     """
     def __init__(self, f):
+        self.f = f
+
+    def __call__(self):
         if not env['new_user']:
             abort("A user must be set to run user commands.")
-        f()
+        self.f()
+
+
+def _runFailsafeCommand(command):
+    return run(command, warn_only=True)
+
+
+def _isUserCreated():
+    if _runFailsafeCommand('id -u %s' % env['new_user']).succeeded:
+        return True
+    return False
 
 
 def _isFileEmpty(file):
-    if run('file %s | grep %s' % (file, file), warn_only=True).succeeded:
+    if _runFailsafeCommand('file %s | grep %s' % (file, file)).succeeded:
         return True
-    else:
-        return False
+    return False
 
 
-def _sshContext(action, keyfile=None):
+def _sshContext(action, key=None):
     """TODO: make this an actual context manager and
     relegate each action to its task
     """
-    with settings(user=env['new_user']), cd('/home/%s' % env['user']):
-        run('mkdir -p .ssh')
-        run('touch %s' % AUTH_KEYS_FILE)
+    with cd('/home/%s' % env['new_user']), settings(sudo_user=env['new_user']):
+        sudo('mkdir -p .ssh')
+        sudo('touch %s' % AUTH_KEYS_FILE)
         if action == 'enable':
             uncomment(AUTH_KEYS_FILE, r'^')
         elif action == 'disable':
             comment(AUTH_KEYS_FILE, r'^')
         elif action == 'add':
-            if keyfile is None:
+            if key is None:
                 abort("No key provided for SSH handling command.")
-                with open(keyfile) as key:
-                    append(AUTH_KEYS_FILE, key)
+            append(AUTH_KEYS_FILE, key, use_sudo=True)
         elif action == 'remove':
             run('rm %s' % AUTH_KEYS_FILE)
 
@@ -63,7 +75,6 @@ def user(user):
     env['new_user'] = user
 
 
-@user_required
 @task
 def setup_new_user(add_on_create=False, ssh_keyfile=None, quota_size=10):
     """Executes the required tasks to fully setup a new user
@@ -74,55 +85,58 @@ def setup_new_user(add_on_create=False, ssh_keyfile=None, quota_size=10):
     execute(create_user)
 
     if add_on_create and ssh_keyfile:
-        execute(create_access, action='add', keyfile=ssh_keyfile)
+        execute(create_access, ssh_keyfile=ssh_keyfile)
 
     execute(set_quota, quota_size=quota_size)
 
 
-@user_required
 @task
 def create_user():
     """Creates a user without password"""
+    if _isUserCreated():
+        puts("The user is already created, skipping task...")
+        return
+
     sudo('adduser --disabled-password --gecos "" %s' % env['new_user'])
 
 
-@user_required
 @task
 def enable_access():
     """Enables the SSH key on the user"""
     _sshContext(action='enable')
 
 
-@user_required
 @task
 def disable_access():
     """Disables the SSH key on the user"""
     _sshContext(action='disable')
 
 
-@user_required
 @task
 def create_access(ssh_keyfile):
     """Adds a SSH key for the user
     ssh_keyfile: pubfile with the key to add (required)"""
-    _sshContext(action='add', keyfile=ssh_keyfile)
+    key = local('cat %s' % ssh_keyfile, capture=True)
+    puts('Using key %s...' % key)
+    _sshContext(action='add', key=key)
 
 
-@user_required
 @task
 def remove_access():
     """Removes the authorized_keys from the user"""
     _sshContext(action='remove')
 
 
-@user_required
 @task
 def set_quota(quota_format='vsfv0', quota_size=10):
     """Sets the disk quota for the user
     quota_format: The format that was configured on fstab (default 'vsfv0')
     quota_size: Allocated disk quota in gigabytes (default 10)
     """
-    quota_size_gb = BLOCK_SIZE ** quota_size
-    sudo("setquota -u -F %(format)s %(user)s %(size)i %(size)i %(inode)i " +
-         "%(inode)i /" % {'format': quota_format, 'user': env['new_user'],
-                          'size': quota_size_gb, 'inode': INODES_LIMIT})
+    if not _runFailsafeCommand('dpkg-query -l quota').succeeded:
+        warn("Quota is not installed/configured. Not setting user quota...")
+        return
+    quota_size_gb = (BLOCK_SIZE ** 2) * quota_size
+    sudo("setquota -u -F {} {} {} {} {} {} /".format(
+        quota_format, env['new_user'], quota_size_gb, quota_size_gb,
+        INODES_LIMIT, INODES_LIMIT))
