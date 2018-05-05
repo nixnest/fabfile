@@ -93,11 +93,13 @@ def user(new_user):
 
 
 @task
-def setup_new_user(add_on_create=False, ssh_keyfile=None, quota_size=10):
+def setup_new_user(add_on_create=False, ssh_keyfile=None, quota_size=10,
+                   is_sudoer=False):
     """Executes the required tasks to fully setup a new user
     add_on_create: whether an SSH key should be added on create (default False)
     ssh_keyfile: pubfile containing the key for the new user (default None)
     quota_size: allocated disk size in Gigabytes (default 10)
+    is_sudoer: whether the user should be a sudoer (default False)
     """
     execute(create_user)
 
@@ -105,6 +107,9 @@ def setup_new_user(add_on_create=False, ssh_keyfile=None, quota_size=10):
         execute(create_access, ssh_keyfile=ssh_keyfile)
 
     execute(set_quota, quota_size=quota_size)
+
+    if is_sudoer:
+        execute(enable_sudo)
 
 
 @task
@@ -165,6 +170,7 @@ def set_quota(quota_format='vsfv0', quota_size=10):
     if not _runFailsafeCommand('apt list quota | grep installed').succeeded:
         warn("Quota is not installed/configured. Not setting user quota...")
         return
+
     quota_size_gb = (BLOCK_SIZE ** 2) * quota_size
     sudo("setquota -u -F {} {} {} {} {} {} /".format(
         quota_format, env['new_user'], quota_size_gb, quota_size_gb,
