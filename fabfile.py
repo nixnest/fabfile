@@ -10,6 +10,9 @@ AUTH_KEYS_FILE = '.ssh/authorized_keys'
 BLOCK_SIZE = 1024
 INODES_LIMIT = 1000000  # An arbitrarily large number. It's irrelevant
 
+APT_PACKAGES_FILE = './packages-apt'
+PIP_PACKAGES_FILE = './packages-pip'
+
 env['new_user'] = ''
 env['use_ssh_config'] = True
 
@@ -28,6 +31,11 @@ class user_required:
         if not env['new_user']:
             abort("A user must be set to run user commands.")
         self.func()
+
+
+def _loadPackages(packages_file):
+    return ' '.join(
+        [package for package in open(packages_file).read()]).replace('\n', '')
 
 
 def _runFailsafeCommand(command):
@@ -175,3 +183,13 @@ def set_quota(quota_format='vsfv0', quota_size=10):
     sudo("setquota -u -F {} {} {} {} {} {} /".format(
         quota_format, env['new_user'], quota_size_gb, quota_size_gb,
         INODES_LIMIT, INODES_LIMIT))
+
+
+@task
+def bootstrap_server():
+    """Installs base packages for the server. In case of migration"""
+    apt_packages = _loadPackages(APT_PACKAGES_FILE)
+    pip_packages = _loadPackages(PIP_PACKAGES_FILE)
+
+    sudo('apt install %s' % apt_packages)
+    sudo('pip install %s' % pip_packages)
