@@ -30,6 +30,15 @@ def _runFailsafeCommand(command):
     return run(command, warn_only=True)
 
 
+def _isKeyInFile(key):
+    key = key.replace(' ', '\ ')
+    with cd('/home/%s/.ssh' % env['new_user']):
+        if _runFailsafeCommand('grep %s authorized_keys'
+                               % key).succeeded:
+            return True
+        return False
+
+
 def _isUserCreated():
     if _runFailsafeCommand('id -u %s' % env['new_user']).succeeded:
         return True
@@ -56,6 +65,9 @@ def _sshContext(action, key=None):
         elif action == 'add':
             if key is None:
                 abort("No key provided for SSH handling command.")
+            if _isKeyInFile(key):
+                puts("Key is already authorized, skipping...")
+                return
             append(AUTH_KEYS_FILE, key, use_sudo=True)
         elif action == 'remove':
             run('rm %s' % AUTH_KEYS_FILE)
