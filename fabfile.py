@@ -13,17 +13,21 @@ INODES_LIMIT = 1000000  # An arbitrarily large number. It's irrelevant
 env['new_user'] = ''
 env['use_ssh_config'] = True
 
+# Disgusting hack to pass environment through sudo
+# Useful for cloning repos and stuff
+env['sudo_prefix'] += '-E '
+
 
 class user_required:
     """Decorator that verifies a user has been set
     """
-    def __init__(self, f):
-        self.f = f
+    def __init__(self, func):
+        self.func = func
 
     def __call__(self):
         if not env['new_user']:
             abort("A user must be set to run user commands.")
-        self.f()
+        self.func()
 
 
 def _runFailsafeCommand(command):
@@ -45,15 +49,16 @@ def _isUserCreated():
     return False
 
 
-def _isFileEmpty(file):
-    if _runFailsafeCommand('file %s | grep %s' % (file, file)).succeeded:
+def _isFileEmpty(file_to_check):
+    if _runFailsafeCommand(
+            'file %s | grep %s' % (file_to_check, file_to_check)).succeeded:
         return True
     return False
 
 
 def _sshContext(action, key=None):
     """TODO: make this an actual context manager and
-    relegate each action to its task
+    delegate each action to its task
     """
     with cd('/home/%s' % env['new_user']), settings(sudo_user=env['new_user']):
         sudo('mkdir -p .ssh')
@@ -81,10 +86,10 @@ def on(host):
 
 
 @task
-def user(user):
+def user(new_user):
     """Set target user to work on
     """
-    env['new_user'] = user
+    env['new_user'] = new_user
 
 
 @task
@@ -142,13 +147,13 @@ def remove_access():
 @task
 def enable_sudo():
     """Adds user to the sudo group"""
-    sudo('usermod -aG sudo %s' % env['user'])
+    sudo('usermod -aG sudo %s' % env['new_user'])
 
 
 @task
 def disable_sudo():
     """Removes user from the sudo group"""
-    sudo('gpasswd -d %s sudo' % env['user'])
+    sudo('gpasswd -d %s sudo' % env['new_user'], warn_only=True)
 
 
 @task
@@ -157,7 +162,7 @@ def set_quota(quota_format='vsfv0', quota_size=10):
     quota_format: The format that was configured on fstab (default 'vsfv0')
     quota_size: Allocated disk quota in gigabytes (default 10)
     """
-    if not _runFailsafeCommand('dpkg-query -l quota').succeeded:
+    if not _runFailsafeCommand('apt list quota | grep installed').succeeded:
         warn("Quota is not installed/configured. Not setting user quota...")
         return
     quota_size_gb = (BLOCK_SIZE ** 2) * quota_size
