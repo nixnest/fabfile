@@ -128,6 +128,18 @@ def remove_access():
 
 
 @task
+def enable_sudo():
+    """Adds user to the sudo group"""
+    sudo('usermod -aG sudo %s' % env['user'])
+
+
+@task
+def disable_sudo():
+    """Removes user from the sudo group"""
+    sudo('gpasswd -d %s sudo' % env['user'])
+
+
+@task
 def set_quota(quota_format='vsfv0', quota_size=10):
     """Sets the disk quota for the user
     quota_format: The format that was configured on fstab (default 'vsfv0')
