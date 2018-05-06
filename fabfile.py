@@ -33,9 +33,33 @@ class user_required:
         self.func()
 
 
+def _installAptPackages(packages):
+    sudo('apt -qq update')
+    sudo('apt -yq install %s' % packages)
+
+
+def _installPipPackages(packages):
+    sudo('pip3 install --quiet %s' % packages)
+
+
+def _addAptRepo(repository):
+    sudo("add-apt-repository \"%s\"" % repository, shell=True)
+
+
+def _setupDocker():
+    sudo('curl -fsSL https://download.docker.com/linux/debian/gpg | ' +
+         'sudo apt-key add -', shell=True)
+
+    _addAptRepo("deb [arch=amd64] https://download.docker.com/linux/debian \
+       $(lsb_release -cs) \
+       stable")
+    _installAptPackages('docker-ce')
+
+
 def _loadPackages(packages_file):
     return ' '.join(
-        [package for package in open(packages_file).read()]).replace('\n', '')
+        [package for package in open(packages_file).readlines()]
+    ).replace('\n', '')
 
 
 def _runFailsafeCommand(command):
@@ -191,5 +215,7 @@ def bootstrap_server():
     apt_packages = _loadPackages(APT_PACKAGES_FILE)
     pip_packages = _loadPackages(PIP_PACKAGES_FILE)
 
-    sudo('apt install %s' % apt_packages)
-    sudo('pip install %s' % pip_packages)
+    _installAptPackages(apt_packages)
+    _installPipPackages(pip_packages)
+
+    _setupDocker()

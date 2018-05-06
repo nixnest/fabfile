@@ -1,3 +1,6 @@
 nginx
 zsh
 quota
+python3-pip
+software-properties-common
+apt-transport-https
