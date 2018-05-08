@@ -33,6 +33,11 @@ class user_required:
         self.func()
 
 
+def _copyDefaultZshrc():
+    sudo('cp /etc/zsh/newuser.zshrc.recommended /home/%s/.zshrc'
+         % env['new_user'], sudo_user=env['new_user'])
+
+
 def _installAptPackages(packages):
     sudo('apt -qq update')
     sudo('apt -yq install %s' % packages)
@@ -126,22 +131,29 @@ def user(new_user):
 
 @task
 def setup_new_user(add_on_create=False, ssh_keyfile=None, quota_size=10,
-                   is_sudoer=False):
+                   is_sudoer=False, use_zsh=True):
     """Executes the required tasks to fully setup a new user
     add_on_create: whether an SSH key should be added on create (default False)
     ssh_keyfile: pubfile containing the key for the new user (default None)
     quota_size: allocated disk size in Gigabytes (default 10)
     is_sudoer: whether the user should be a sudoer (default False)
+    use_zsh: whether the user should have its default shell set to zsh
+             (default True)
     """
     execute(create_user)
 
     if add_on_create and ssh_keyfile:
         execute(create_access, ssh_keyfile=ssh_keyfile)
 
-    execute(set_quota, quota_size=quota_size)
-
     if is_sudoer:
         execute(enable_sudo)
+
+    if use_zsh:
+        execute(set_user_shell)
+        _copyDefaultZshrc()
+
+    if quota_size > 0:
+        execute(set_quota, quota_size=quota_size)
 
 
 @task
@@ -194,19 +206,20 @@ def disable_sudo():
 
 
 @task
-def set_quota(quota_format='vsfv0', quota_size=10):
+def set_quota(quota_format='vfsv1', quota_size=10, partition='/'):
     """Sets the disk quota for the user
     quota_format: The format that was configured on fstab (default 'vsfv0')
     quota_size: Allocated disk quota in gigabytes (default 10)
+    partition: The partition to quota (default /)
     """
     if not _runFailsafeCommand('apt list quota | grep installed').succeeded:
         warn("Quota is not installed/configured. Not setting user quota...")
         return
 
     quota_size_gb = (BLOCK_SIZE ** 2) * quota_size
-    sudo("setquota -u -F {} {} {} {} {} {} /".format(
+    sudo("setquota -u -F {} {} {} {} {} {} {}".format(
         quota_format, env['new_user'], quota_size_gb, quota_size_gb,
-        INODES_LIMIT, INODES_LIMIT))
+        INODES_LIMIT, INODES_LIMIT, partition))
 
 
 @task
@@ -219,3 +232,11 @@ def bootstrap_server():
     _installPipPackages(pip_packages)
 
     _setupDocker()
+
+
+@task
+def set_user_shell(shell='/bin/zsh'):
+    """Reconfigures the user's login shell
+    shell: the path of the login shell (default /bin/zsh)
+    """
+    sudo('chsh -s %s %s' % (shell, env['new_user']))
