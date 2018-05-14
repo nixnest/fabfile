@@ -5,25 +5,7 @@ from patchwork.files import contains
 BLOCK_SIZE = 1024
 INODES_LIMIT = 1000000  # An arbitrarily large number. It's irrelevant
 
-APT_PACKAGES_FILE = './packages-apt'
-PIP_PACKAGES_FILE = './packages-pip'
-
 AUTH_KEYS_FILE = '.ssh/authorized_keys'
-
-
-def _loadPackages(packages_file):
-    return ' '.join(
-        [package for package in open(packages_file).readlines()]
-    ).replace('\n', '')
-
-
-def _installAptPackages(ctx, packages):
-    ctx.sudo('apt -qq update')
-    ctx.sudo('apt -yq install %s' % packages)
-
-
-def _installPipPackages(ctx, packages):
-    ctx.sudo('pip3 install --quiet %s' % packages)
 
 
 def _copyDefaultZshrc(ctx, user):
@@ -153,13 +135,3 @@ def create_user(ctx, user):
         return
 
     ctx.sudo('adduser --disabled-password --gecos "" %s' % user)
-
-
-@task
-def bootstrap_server(ctx):
-    """Installs base packages for the server. In case of migration"""
-    apt_packages = _loadPackages(APT_PACKAGES_FILE)
-    pip_packages = _loadPackages(PIP_PACKAGES_FILE)
-
-    _installAptPackages(apt_packages)
-    _installPipPackages(pip_packages)

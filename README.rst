@@ -9,14 +9,23 @@ task selection is rather limited as it's thought for our use mainly.
 Dependencies
 ============
 
-Execution has only been tested with Fabric3==1.14.post1
+This script has recently been rewritten, so it only works with fabric>=2.0.0.
+More detailed dependencies are available in ``requirements.txt``, as usual.
 
 Usage
 =====
 
 ``fab -l`` gives you an overview of the available tasks. More detail about these
-tasks can be read by running ``fab -d <command>``.
+tasks can be read by running ``fab -h <module>.<command>``.
+
+Host management changed, so a selection task is no longer necessary. This is now
+done through the ``-H`` command line flag.
+
+As well, user selection is also a per-task assignment, which is why using the
+wrapper tasks is more imporant than ever.
+
+The fabric project is split between (for now) two modules: ``users`` and ``server``
 
 A full usage example would look like this::
 
-    fab on:nixnest user:nep setup_new_user:add_on_create=True,ssh_keyfile=~/.ssh/id_ed25519.pub
+    fab -H nixnest setup_new_user --user=nep --ssh_keyfile=~/.ssh/id_ed25519.pub --is-sudoer

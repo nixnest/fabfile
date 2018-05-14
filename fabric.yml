@@ -1,0 +1,9 @@
+debug: true
+run:
+  echo: true
+
+sudo:
+  echo: true
+
+tasks:
+  auto_dash_names: false
