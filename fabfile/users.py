@@ -1,7 +1,6 @@
 from invoke import task, Exit
 from patchwork.files import contains
 
-
 BLOCK_SIZE = 1024
 INODES_LIMIT = 1000000  # An arbitrarily large number. It's irrelevant
 
@@ -56,6 +55,8 @@ def setup_new_user(ctx, user,  ssh_keyfile=None, quota_size=10,
 
     set_user_shell(ctx, user)
     _copyDefaultZshrc(ctx, user)
+
+    add_user_to_mercurial(ctx, user, ssh_keyfile, is_root=is_sudoer)
 
     if is_sudoer:
         enable_sudo(ctx, user)
@@ -135,3 +136,19 @@ def create_user(ctx, user):
         return
 
     ctx.sudo('adduser --disabled-password --gecos "" %s' % user)
+
+
+@task
+def add_user_to_mercurial(ctx, user, key, is_root=False):
+    """Adds the user to the mercurial repository, and auths with key, either
+as normal user or as root
+    is_root: whether the user should have admin access (default False)
+    """
+    user_type_dir = 'root' if is_root else 'users'
+    user_key_path = '/etc/mercurial-server/%s/%s' % \
+                    (user_type_dir, user)
+
+    ctx.sudo('mkdir %s' % user_key_path)
+    ctx.sudo('bash -c "echo \"%s\" >> %s/%s"' %
+             (key, user_key_path, user))
+    ctx.sudo('/usr/share/mercurial-server/refresh-auth', user='hg')
